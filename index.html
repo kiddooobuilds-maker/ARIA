@@ -1014,11 +1014,17 @@
       const cd = data?.chart_data;
       if (!cd) return <div className="empty-state"><span className="empty-icon">📈</span><span className="empty-sub">Run analysis to see price predictions</span></div>;
 
-      const points = cd.dates.map((d, i) => ({
-        date: d, 
-        actual: cd.actual_close[i], 
-        predicted: cd.pred_return ? (cd.actual_close[i-1] * (1 + cd.pred_return[i])) : cd.pred_close[i],
-      }));
+      const points = cd.dates.map((d, i) => {
+        const prevActual = i > 0 ? cd.actual_close[i - 1] : cd.actual_close[i];
+        const predictedPrice = cd.pred_return
+          ? (prevActual * (1 + (cd.pred_return[i] / 100)))
+          : cd.pred_close[i];
+        return {
+          date: d,
+          actual: cd.actual_close[i],
+          predicted: predictedPrice,
+        };
+      });
       const n = points.length;
       const step = Math.max(1, Math.floor(n / 8));
 

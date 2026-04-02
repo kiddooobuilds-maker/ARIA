@@ -6,7 +6,7 @@ File        : ai_hedge_fund.py
 Description : End-to-end pipeline for Indian equity markets.
 =============================================================================
 """
-import os, math, warnings, logging
+import os, math, warnings, logging, tempfile, threading
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Callable
 from datetime import datetime, timedelta
@@ -28,6 +28,9 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.linear_model import Ridge
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error
 
 # ── Optional heavy deps — degrade gracefully ──────────────────────────────
 try:
@@ -57,6 +60,7 @@ CACHE_DIR        = "cache"                # folder next to app.py
 SENTIMENT_CEILING = 2000                  # max rows to keep per ticker
 RETRAIN_EVERY    = 30                     # retrain model after this many new days
 os.makedirs(CACHE_DIR, exist_ok=True)
+CHECKPOINT_SAVE_LOCK = threading.Lock()
 
 
 # =============================================================================
@@ -79,22 +83,22 @@ class Config:
     # ── LSTM architecture ──
     hidden_size:          int   = 128
     num_layers:           int   = 3         # deeper model for returns
-    dropout_p:            float = 0.3
+    dropout_p:            float = 0.1
 
     # ── Training ──
     batch_size:           int   = 32
     epochs:               int   = 100
     learning_rate:        float = 1e-3
     patience:             int   = 15
-    train_frac:           float = 0.70
-    val_frac:             float = 0.15
+    train_frac:           float = 0.45
+    val_frac:             float = 0.10
 
     # ── Signal fusion weights ──
-    price_weight:         float = 0.50      # LSTM prediction weight
-    sentiment_weight:     float = 0.30      # FinBERT/VADER weight
+    price_weight:         float = 0.70      # LSTM-led prediction weight
+    sentiment_weight:     float = 0.10      # free-news sentiment is noisy, use lightly
     momentum_weight:      float = 0.20      # RSI + MACD weight
-    strong_threshold:     float = 0.70
-    signal_threshold:     float = 0.55
+    strong_threshold:     float = 0.68
+    signal_threshold:     float = 0.56
 
     # ── Portfolio ──
     initial_capital:      float = 100_000.0
@@ -107,7 +111,7 @@ class Config:
     take_profit_pct:      float = 0.15      # take profit — exit if gains 15% from entry
 
     # ── Alpha Overhaul ──
-    min_return_threshold: float = 0.007     # 0.7% predicted move required to call BUY
+    min_return_threshold: float = 0.25     # dynamic scoring still uses this as a soft anchor
     benchmark_ticker:     str   = "^NSEI"   # Nifty 50 for benchmarking
 
     # ── Output files — all set dynamically per ticker ──
@@ -671,11 +675,11 @@ class FeaturePipeline:
 
         for i in range(seq, len(scaled)):
             X.append(scaled[i - seq : i])
-            # TARGET: Percentage return for day i (Close_i / Close_i-1 - 1)
+            # TARGET: Percentage return for day i ((Close_i / Close_i-1 - 1) * 100)
             # We use the raw values before scaling for easier return calculation
             curr_c = df["Close"].iloc[i]
             prev_c = df["Close"].iloc[i-1]
-            ret    = (curr_c / prev_c) - 1
+            ret    = ((curr_c / prev_c) - 1) * 100
             y.append(ret)
             dates.append(df.index[i])
 
@@ -791,7 +795,7 @@ class Trainer:
         tr_loader = self._loader(splits["X_train"], splits["y_train"], shuffle=True)
         va_loader = self._loader(splits["X_val"],   splits["y_val"],   shuffle=False)
 
-        criterion = nn.HuberLoss()
+        criterion = nn.MSELoss()
         opt       = torch.optim.AdamW(
             self.model.parameters(),
             lr=self.cfg.learning_rate, weight_decay=1e-4,
@@ -815,7 +819,7 @@ class Trainer:
             if va < best_val:
                 best_val = va
                 patience = 0
-                torch.save(self.model.state_dict(), self.cfg.model_path)
+                atomic_torch_save(self.model.state_dict(), self.cfg.model_path)
             else:
                 patience += 1
 
@@ -876,15 +880,106 @@ class Trainer:
         ax.tick_params(colors="#aaa")
         for sp in ax.spines.values():
             sp.set_edgecolor("#333")
-        plt.tight_layout()
-        plt.savefig(self.cfg.loss_plot, dpi=150, bbox_inches="tight")
-        plt.close()
+        fig.tight_layout()
+        fig.canvas.draw()
+        fig.savefig(self.cfg.loss_plot, dpi=150, bbox_inches="tight")
+        plt.close(fig)
         log.info(f"Loss curve saved → {self.cfg.loss_plot}")
 
 
 # =============================================================================
 # PART 4 — SIGNAL GENERATOR
 # =============================================================================
+
+def atomic_torch_save(state_dict, path: str):
+    """Save checkpoints atomically to reduce file-lock issues in synced folders."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with CHECKPOINT_SAVE_LOCK:
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=os.path.basename(path) + ".",
+            suffix=".tmp",
+            dir=os.path.dirname(path) or ".",
+        )
+        os.close(fd)
+        try:
+            torch.save(state_dict, tmp_path)
+            os.replace(tmp_path, path)
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+
+def build_hybrid_return_forecast(model: "AIHedgeFundLSTM",
+                                 splits: Dict,
+                                 cfg: Config) -> Dict[str, object]:
+    """
+    Blend the LSTM with simpler tabular models to stabilize predictions.
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.load_state_dict(torch.load(cfg.model_path, map_location=device, weights_only=True))
+    model.eval().to(device)
+
+    with torch.no_grad():
+        lstm_val = model(torch.tensor(splits["X_val"]).to(device)).squeeze(-1).cpu().numpy()
+        lstm_test = model(torch.tensor(splits["X_test"]).to(device)).squeeze(-1).cpu().numpy()
+
+    X_train_2d = splits["X_train"].reshape(len(splits["X_train"]), -1)
+    X_val_2d = splits["X_val"].reshape(len(splits["X_val"]), -1)
+    X_test_2d = splits["X_test"].reshape(len(splits["X_test"]), -1)
+
+    ridge = Ridge(alpha=1.0)
+    ridge.fit(X_train_2d, splits["y_train"])
+    ridge_val = ridge.predict(X_val_2d)
+    ridge_test = ridge.predict(X_test_2d)
+
+    rf = RandomForestRegressor(
+        n_estimators=120,
+        max_depth=6,
+        min_samples_leaf=5,
+        random_state=SEED,
+        n_jobs=-1,
+    )
+    rf.fit(X_train_2d, splits["y_train"])
+    rf_val = rf.predict(X_val_2d)
+    rf_test = rf.predict(X_test_2d)
+
+    y_val = splits["y_val"]
+    val_mae = {
+        "lstm": float(mean_absolute_error(y_val, lstm_val)),
+        "ridge": float(mean_absolute_error(y_val, ridge_val)),
+        "rf": float(mean_absolute_error(y_val, rf_val)),
+    }
+
+    inv = {name: 1.0 / max(score, 1e-6) for name, score in val_mae.items()}
+    inv_sum = sum(inv.values())
+    weights = {name: value / inv_sum for name, value in inv.items()}
+
+    ensemble_val = (
+        weights["lstm"] * lstm_val +
+        weights["ridge"] * ridge_val +
+        weights["rf"] * rf_val
+    )
+    ensemble_test = (
+        weights["lstm"] * lstm_test +
+        weights["ridge"] * ridge_test +
+        weights["rf"] * rf_test
+    )
+
+    return {
+        "val_pred": ensemble_val,
+        "test_pred": ensemble_test,
+        "weights": weights,
+        "val_mae": val_mae,
+        "components_test": {
+            "lstm": lstm_test,
+            "ridge": ridge_test,
+            "rf": rf_test,
+        },
+    }
+
 
 class SignalGenerator:
     """
@@ -917,12 +1012,14 @@ class SignalGenerator:
         for i, date in enumerate(dates):
             # ── Price signal from LSTM: predicted Return ──
             # pred_close[i] is now the predicted return decimal
-            pred_ret = pred_close[i]
+            pred_ret = float(pred_close[i])
             thresh   = self.cfg.min_return_threshold
             
-            if pred_ret >= thresh:      price_score = 1.0  # Bullish
-            elif pred_ret <= -thresh:   price_score = 0.0  # Bearish
-            else:                       price_score = 0.5  # Neutral conviction
+            recent_px = price_df.loc[:date, "Close"]
+            recent_vol = float((recent_px.pct_change().tail(20).std() or 0.0) * 100.0)
+            recent_vol = max(recent_vol, thresh, 0.15)
+            z_score = pred_ret / recent_vol
+            price_score = float(np.clip(0.5 + 0.38 * np.tanh(1.35 * z_score), 0.0, 1.0))
 
             # ── Sentiment signal from FinBERT/VADER ──
             # FACT-CHECK: Only trust sentiment if multiple sources/headlines agree
@@ -930,8 +1027,11 @@ class SignalGenerator:
             if sentiment_df is not None and date in sentiment_df.index:
                 row = sentiment_df.loc[date]
                 # If only 1 headline, it's often noise — revert to neutral
-                if row.get("headline_count", 0) >= 2:
+                headline_count = int(row.get("headline_count", 0))
+                if headline_count >= 3:
                     raw = float(row["sentiment_score"])
+                    agreement = min(1.0, headline_count / 6.0)
+                    sent_score = 0.5 + (((raw + 1) / 2) - 0.5) * agreement
                     sent_score = (raw + 1) / 2      # [-1,+1] → [0, 1]
 
             # ── Momentum signal from RSI + MACD ──
@@ -1008,7 +1108,7 @@ class Backtester:
         self.benchmark_return = bench_ret
 
         cash     = self.cfg.initial_capital
-        position = 0.0
+        position = 0
         entry    = 0.0
         equity   = [cash]
         trades   = []
@@ -1027,7 +1127,9 @@ class Backtester:
             if position == 0:
                 # Buy at the OPEN of the day to capture the move towards predicted CLOSE
                 if signal == "STRONG_BUY":
-                    shares = (cash * self.cfg.strong_buy_size) / open_p
+                    shares = math.floor((cash * self.cfg.strong_buy_size) / open_p)
+                    if shares <= 0:
+                        continue
                     cost   = shares * open_p
                     cash -= cost
                     position   = shares
@@ -1035,9 +1137,11 @@ class Backtester:
                     peak_price = open_p
                     trades.append({"date": date, "action": "BUY",
                                    "price": open_p, "signal": signal,
-                                   "shares": round(position, 4)})
+                                   "shares": int(position)})
                 elif signal == "BUY":
-                    shares = (cash * self.cfg.buy_size) / open_p
+                    shares = math.floor((cash * self.cfg.buy_size) / open_p)
+                    if shares <= 0:
+                        continue
                     cost   = shares * open_p
                     cash -= cost
                     position   = shares
@@ -1045,7 +1149,7 @@ class Backtester:
                     peak_price = open_p
                     trades.append({"date": date, "action": "BUY",
                                    "price": open_p, "signal": signal,
-                                   "shares": round(position, 4)})
+                                   "shares": int(position)})
 
             elif position > 0:
                 # Update peak price — trails upward as price rises
@@ -1082,8 +1186,8 @@ class Backtester:
                     trades.append({"date": date, "action": action,
                                    "price": price, "signal": signal,
                                    "pnl": round(pnl, 2),
-                                   "shares": round(position, 4)})
-                    position   = 0.0
+                                   "shares": int(position)})
+                    position   = 0
                     peak_price = 0.0
 
             # Total Equity = Cash on Hand + Current Value of Position
@@ -1099,7 +1203,7 @@ class Backtester:
             trades.append({"date": signals.index[-1], "action": "SELL(EOD)",
                            "price": lp, "signal": "EOD",
                            "pnl": round(pnl, 2),
-                           "shares": round(position, 4)})
+                           "shares": int(position)})
             equity[-1] = cash # Correct last equity point
 
         eq = pd.Series(equity)
@@ -1192,8 +1296,10 @@ class Backtester:
         for sp in ax2.spines.values():
             sp.set_edgecolor("#333")
 
-        plt.savefig(self.cfg.backtest_plot, dpi=150, bbox_inches="tight")
-        plt.close()
+        fig.tight_layout()
+        fig.canvas.draw()
+        fig.savefig(self.cfg.backtest_plot, dpi=150, bbox_inches="tight")
+        plt.close(fig)
         log.info(f"Backtest chart saved → {self.cfg.backtest_plot}")
 
 
@@ -1300,17 +1406,11 @@ def run_full_pipeline(ticker: str = "RELIANCE.NS",
         }
 
     # ── Step 5: Inference on test set ─────────────────────────────────────
-    step("Running inference on test set...")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.load_state_dict(torch.load(cfg.model_path, map_location=device, weights_only=True))
-    model.eval().to(device)
-    with torch.no_grad():
-        preds_sc = model(
-            torch.tensor(splits["X_test"]).to(device)
-        ).squeeze(-1).cpu().numpy()
+    step("Running hybrid inference (LSTM + Ridge + Random Forest)...")
+    hybrid_pred = build_hybrid_return_forecast(model, splits, cfg)
 
     # Targets are returns, so no inverse scaling needed for Close price
-    pred_return  = preds_sc
+    pred_return  = hybrid_pred["test_pred"]
     dates_test   = splits["dates_test"]
     actual_close = price_df.loc[dates_test, "Close"].values
 
@@ -1397,6 +1497,12 @@ def run_full_pipeline(ticker: str = "RELIANCE.NS",
             "signal_distribution": signal_counts,
             "train_losses": [round(l, 6) for l in train_info["train_losses"]],
             "val_losses":   [round(l, 6) for l in train_info["val_losses"]],
+            "hybrid_model_weights": {
+                k: round(float(v), 4) for k, v in hybrid_pred["weights"].items()
+            },
+            "hybrid_val_mae": {
+                k: round(float(v), 4) for k, v in hybrid_pred["val_mae"].items()
+            },
         },
         "trade_log":     trades_list,
         "training_info": {
@@ -1406,12 +1512,19 @@ def run_full_pipeline(ticker: str = "RELIANCE.NS",
             "features_used": pipeline.feature_cols,
             "input_size":    input_size,
             "parameters":    model.count_parameters(),
+            "forecast_model": "Hybrid Ensemble",
+            "forecast_weights": {
+                k: round(float(v), 4) for k, v in hybrid_pred["weights"].items()
+            },
         },
         "signal_meta": SignalGenerator.LABEL_MAP,
         "raw_test_data": {
             "dates": dates_test.tolist(),
             "actual": [float(v) for v in actual_close],
-            "predictions": pred_return.tolist()
+            "predictions": pred_return.tolist(),
+            "prediction_components": {
+                k: v.tolist() for k, v in hybrid_pred["components_test"].items()
+            }
         }
     }
 
@@ -1481,7 +1594,7 @@ def run_comparison(ticker: str = "RELIANCE.NS",
     def simple_backtest(actual, predicted, cfg):
         """Buy when predicted > prev_actual, sell otherwise."""
         capital  = cfg.initial_capital
-        position = 0.0
+        position = 0
         entry    = 0.0
         equity   = [capital]
         trades   = []
@@ -1494,7 +1607,11 @@ def run_comparison(ticker: str = "RELIANCE.NS",
             prev    = actual[i-1] if i > 0 else actual[i]
 
             if position == 0 and bullish:
-                position = (capital * cfg.buy_size) / price
+                shares = math.floor((capital * cfg.buy_size) / price)
+                if shares <= 0:
+                    equity.append(capital)
+                    continue
+                position = shares
                 entry    = price
                 trades.append({"pnl": 0})
             elif position > 0:
@@ -1504,7 +1621,7 @@ def run_comparison(ticker: str = "RELIANCE.NS",
                     pnl     = position * (price - entry)
                     capital = capital - position * entry + position * price
                     trades.append({"pnl": round(pnl, 2)})
-                    position = 0.0
+                    position = 0
             equity.append(capital + (position * price if position > 0 else 0))
 
         if position > 0:
