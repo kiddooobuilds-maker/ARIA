@@ -20,14 +20,6 @@ The project includes:
 - a Flask API and React-based dashboard
 - a multi-stock portfolio manager
 
-## Current Positioning
-
-The project should be presented as an:
-
-- `AI-Powered Quant Portfolio Management System`
-- `LSTM-Based Stock Signal and Portfolio Intelligence System`
-
-This is a better fit for Indian markets than calling it a literal hedge fund.
 
 ## Repository Structure
 
