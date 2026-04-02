@@ -1,61 +1,243 @@
-# 🤖 AI Hedge Fund — Indian Equity Markets
+# AI-Powered Quant Portfolio Management System
 
-A full-stack, AI-powered trading system for Indian equities (NSE/BSE). It combines an **LSTM neural network** for price prediction, **FinBERT/VADER** for news sentiment analysis, and a **Flask + React dashboard** with an AI chatbot (ARIA) for signal interpretation.
+An engineering major project for Indian equity markets. This project combines an LSTM-led forecasting pipeline, technical indicators, news sentiment, backtesting, and a web dashboard for analysing NSE stocks and comparing decisions against real market benchmarks such as the Nifty 50.
 
-> Built as a major project. Not intended for live trading with real money.
+This is a research and demonstration system, not a live-trading product.
 
----
+## Project Overview
 
-## 📁 Project Structure
+The system is designed to answer one practical question:
 
-```
+"Can we combine historical market sequences, technical indicators, and news sentiment to generate better trading decisions than naive investing baselines?"
+
+The project includes:
+
+- a core ML pipeline for a single stock
+- an LSTM-led forecasting engine
+- sentiment analysis using FinBERT or VADER
+- signal generation using model forecast, sentiment, and momentum
+- realistic backtesting with whole-share execution
+- a Flask API and React-based dashboard
+- a multi-stock portfolio manager
+
+## Current Positioning
+
+The project should be presented as an:
+
+- `AI-Powered Quant Portfolio Management System`
+- `LSTM-Based Stock Signal and Portfolio Intelligence System`
+
+This is a better fit for Indian markets than calling it a literal hedge fund.
+
+## Repository Structure
+
+```text
 major/
-├── ai_hedge_fund.py      # Core ML pipeline (LSTM + Sentiment + Signal + Backtester)
-├── app.py                # Flask REST API server
-├── index.html            # Frontend dashboard (React, single-file)
-├── base.py               # Baseline runner — runs one ticker and prints metrics
-├── run_test.py           # Quick smoke-test (2 epochs, fast validation)
-├── sentiment_backtester.py # Standalone backtester for sentiment signals only
-├── requirements.txt      # Python dependencies
-└── cache/                # Auto-generated — saved models, sentiment CSVs, plots
+├── ai_hedge_fund.py         # Core pipeline: data, features, LSTM, signals, backtesting
+├── app.py                   # Flask API server for the dashboard
+├── index.html               # Frontend dashboard (single-file React UI)
+├── portfolio_manager.py     # Multi-stock portfolio backtester using real Nifty benchmark
+├── base.py                  # Runs one baseline analysis for RELIANCE.NS
+├── run_test.py              # Quick smoke test
+├── sentiment_backtester.py  # Sentiment-focused experimental backtester
+├── requirements.txt         # Python dependencies
+└── cache/                   # Generated models, CSVs, charts, and cached sentiment
 ```
 
----
+## What the System Does
 
-## ✅ What's Working
+For a selected stock, the system:
 
-| Feature | Status | Notes |
-|---|---|---|
-| LSTM price prediction | ✅ Working | Bidirectional, 3-layer, predicts daily returns |
-| FinBERT sentiment | ✅ Working | Loads `ProsusAI/finbert` via HuggingFace |
-| VADER fallback | ✅ Working | Used if FinBERT fails or is disabled |
-| DuckDuckGo news | ✅ Working | Free, no API key needed |
-| yfinance news | ✅ Working | Used as a secondary source with date filtering |
-| RSS feeds (ET, Moneycontrol, etc.) | ✅ Working | Applied only to latest/today's date |
-| Signal fusion (LSTM + Sentiment + Momentum) | ✅ Working | 50/30/20 weight split |
-| Backtesting engine | ✅ Working | Stop-loss, trailing stop, take-profit, Sharpe, alpha vs Nifty 50 |
-| Flask API server | ✅ Working | SSE progress streaming, job queue |
-| Web dashboard | ✅ Working | Open `http://localhost:5000` after starting `app.py` |
-| ARIA chatbot (rule-based) | ✅ Working | Answers signal/performance/risk questions without Ollama |
-| ARIA chatbot (Ollama/LLaMA 3) | ⚠️ Optional | Only works if Ollama is running locally |
-| Sentiment cache | ✅ Working | Incremental — only scores new trading days |
-| Model cache | ✅ Working | Skips retraining if a saved model exists |
-| Nifty 50 benchmark | ✅ Working | Alpha is calculated vs `^NSEI` |
+1. downloads OHLCV market data
+2. computes technical indicators
+3. builds a 90-day rolling sequence dataset
+4. runs an LSTM-led return forecast
+5. incorporates supporting models for forecast stabilisation
+6. scores news sentiment
+7. combines forecast, sentiment, and momentum into a final signal
+8. simulates trades using realistic whole-share execution
+9. compares performance against:
+   - asset buy-and-hold
+   - real Nifty 50 benchmark (`^NSEI`)
 
----
+## Core Architecture
 
-## ⚠️ Known Limitations / What Isn't Perfect
+```text
+Yahoo Finance OHLCV
+        │
+        ▼
+DataIngestor
+        │
+        ▼
+Technical Features
+(OHLCV + SMA/EMA + RSI + MACD + BB Width + ATR + OBV + Volume)
+        │
+        ▼
+SentimentAnalyser
+(FinBERT / VADER + cached news sentiment)
+        │
+        ▼
+FeaturePipeline
+(scaling + sliding windows, seq_len = 90)
+        │
+        ▼
+LSTM-Led Forecasting
+(with support models for stabilisation)
+        │
+        ▼
+SignalGenerator
+(price forecast + sentiment + momentum)
+        │
+        ▼
+Backtester
+(whole shares, stop-loss, trailing stop, take-profit)
+        │
+        ▼
+Metrics + Charts + Dashboard + Portfolio Manager
+```
 
-- **Historical sentiment is set to neutral (0.0)** — news APIs don't provide archives older than ~30 days, so all historical trading days get a sentiment score of 0. Only the most recent ~30 days get real sentiment scores. This is a data availability limitation, not a bug.
-- **DuckDuckGo search rate-limits** — if you run the pipeline many times in quick succession it may silently return 0 headlines for some days. The model degrades gracefully (falls back to neutral sentiment).
-- **No live trading** — this is a backtesting/research system only. There is no broker integration.
-- **Ollama is optional** — ARIA works without it via rule-based answers, but deep Q&A requires Ollama with LLaMA 3 running locally.
-- **First run is slow** — FinBERT model (~500 MB) needs to download from HuggingFace on first use.
-- **GPU optional** — everything runs on CPU. A GPU makes FinBERT and LSTM training faster.
+## Model and Features
 
----
+### Forecasting model
 
-## 🚀 Setup & Running
+The main forecasting model is an LSTM. This is the core model used in the project because stock market data is sequential and the LSTM is designed to learn temporal dependencies over time.
+
+The project now uses an LSTM-led hybrid forecast internally:
+
+- `LSTM` remains the primary sequence model
+- `Ridge` adds a stable linear correction
+- `RandomForestRegressor` adds non-linear tabular support
+
+This keeps the LSTM as the main predictive engine while making the return forecast more stable in practice.
+
+### Input features
+
+The model uses:
+
+- `Open`
+- `High`
+- `Low`
+- `Close`
+- `Volume`
+- `SMA_20`
+- `SMA_50`
+- `EMA_20`
+- `RSI_14`
+- `MACD`
+- `MACD_Signal`
+- `MACD_Hist`
+- `BB_Width`
+- `ATR`
+- `OBV`
+
+When sentiment data is available, the pipeline also includes:
+
+- `sentiment_score`
+- `sentiment_magnitude`
+- `headline_count`
+
+### Important note on volume
+
+Yes, the project includes volume-based information. Raw `Volume` and `OBV` are part of the input features, so the model does use participation and flow-related signals. However, that does not mean crash prediction is guaranteed; it only means the model can learn patterns related to volatility and market stress.
+
+## Signal Logic
+
+The dashboard and backtester do not directly trade on raw predicted price. They trade on a final signal score built from three components:
+
+- model-led price score
+- sentiment score
+- momentum score
+
+Outputs are:
+
+- `STRONG_BUY`
+- `BUY`
+- `HOLD`
+- `SELL`
+- `STRONG_SELL`
+
+### Composite score
+
+The `Composite` line shown in the dashboard graphs is the final confidence score after combining forecast, sentiment, and momentum. It is not the stock price. It is the model's overall bullish/bearish conviction for each day.
+
+## Backtesting Logic
+
+The single-stock backtester and comparison helpers now use whole-share execution only. Fractional shares are not used, which makes the simulation more realistic for NSE/BSE cash equity trading.
+
+The backtester includes:
+
+- entry on `BUY` or `STRONG_BUY`
+- stop-loss
+- trailing stop
+- take-profit
+- exit on weak or bearish signal
+
+Reported metrics include:
+
+- total return
+- benchmark return
+- alpha vs Nifty 50
+- Sharpe ratio
+- max drawdown
+- win rate
+- trade count
+
+## Benchmarks
+
+There are two important baselines in this project:
+
+- `Asset Buy & Hold`: buying the analysed stock and holding it throughout the period
+- `Nifty 50`: real benchmark fetched using `^NSEI`
+
+This distinction matters:
+
+- buy-and-hold can outperform active systems during strong one-direction bull runs
+- alpha is measured against Nifty 50, not against buy-and-hold
+
+## Portfolio Manager
+
+`portfolio_manager.py` runs the system across a basket of major Indian stocks and constructs a dynamic portfolio.
+
+Current portfolio characteristics:
+
+- rank-based selection
+- conviction-weighted allocation
+- trend filter using SMA20, SMA50, and RSI
+- market-regime-aware gross exposure
+- real Nifty 50 benchmark in the multi-period portfolio backtest
+
+The default portfolio universe is:
+
+- `RELIANCE.NS`
+- `TCS.NS`
+- `HDFCBANK.NS`
+- `INFY.NS`
+- `ICICIBANK.NS`
+- `ITC.NS`
+- `LT.NS`
+- `SBIN.NS`
+- `BAJFINANCE.NS`
+- `BHARTIARTL.NS`
+
+## Dashboard Features
+
+The web dashboard provides:
+
+- stock-wise analysis
+- price and prediction chart
+- sentiment timeline
+- equity curve
+- metrics panel
+- trade log
+- chatbot support for explanation
+
+Displayed benchmark and equity metrics now reflect:
+
+- real Nifty 50 series
+- realistic backtesting rules
+- whole-share trades
+
+## Setup
 
 ### 1. Install dependencies
 
@@ -63,145 +245,145 @@ major/
 pip install -r requirements.txt
 ```
 
-> Python 3.9+ recommended. Use a virtual environment (`.venv` is already in the folder).
+Python 3.9+ is recommended.
 
-### 2. Start the server
+### 2. Start the app
 
 ```bash
 python app.py
 ```
 
-Then open **http://localhost:5000** in your browser.
+Then open:
 
-### 3. Quick smoke test (no UI)
+```text
+http://localhost:5000
+```
+
+### 3. Quick smoke test
 
 ```bash
 python run_test.py
 ```
 
-Runs RELIANCE.NS with only 2 training epochs — good for checking everything is wired up.
-
-### 4. Baseline metrics (no UI)
+### 4. Baseline single-stock run
 
 ```bash
 python base.py
 ```
 
-Prints Total Return, Sharpe, Alpha, Max Drawdown, Win Rate for RELIANCE.NS.
-
----
-
-## 🧠 How the ML Pipeline Works
-
-```
-yfinance OHLCV
-      │
-      ▼
-DataIngestor  →  15 features (OHLCV + SMA/EMA + RSI + MACD + BB + ATR + OBV)
-      │
-      ▼
-SentimentAnalyser  →  DuckDuckGo + yfinance news → FinBERT/VADER → daily score
-      │
-      ▼
-FeaturePipeline  →  Merge price + sentiment → MinMax scale → sliding windows (seq=90)
-      │
-      ▼
-AIHedgeFundLSTM  →  Bidirectional LSTM (3 layers, 128 hidden) → predict daily return
-      │
-      ▼
-SignalGenerator  →  Fuse LSTM (50%) + Sentiment (30%) + Momentum RSI/MACD (20%)
-                    → STRONG_BUY | BUY | HOLD | SELL | STRONG_SELL
-      │
-      ▼
-Backtester  →  Simulate trades with stop-loss / trailing stop / take-profit
-               → Sharpe, Alpha vs Nifty 50, Win Rate, Max Drawdown
-```
-
----
-
-## 📈 Supported Tickers
-
-Any NSE ticker with `.NS` suffix (e.g. `RELIANCE.NS`, `INFY.NS`, `TCS.NS`). The project originally targeted a basket of **10 major Indian stocks**, and the curated keyword list was expanded to 20 tickers over the course of development.
-
-**Original 10:**
-`RELIANCE.NS` · `INFY.NS` · `TCS.NS` · `HDFCBANK.NS` · `ICICIBANK.NS` · `WIPRO.NS` · `SBIN.NS` · `ADANIENT.NS` · `TATAMOTORS.NS` · `BAJFINANCE.NS`
-
-**Added later (now in `TICKER_MAP`):**
-`HINDUNILVR.NS` · `ITC.NS` · `KOTAKBANK.NS` · `LT.NS` · `MARUTI.NS` · `BHARTIARTL.NS` · `AXISBANK.NS` · `NESTLEIND.NS` · `SUNPHARMA.NS` · `DRREDDY.NS`
-
----
-
-## 🖥️ Dashboard Features
-
-- **Run Analysis** — Enter any NSE ticker, watch real-time SSE progress logs
-- **Charts** — Price vs predicted, training loss curve, backtest equity curve
-- **Trade Log** — Every simulated buy/sell with P&L
-- **Metrics Panel** — Total return, Sharpe, alpha vs Nifty, win rate, drawdown
-- **ARIA Chatbot** — Ask questions like:
-  - *"Why was this BUY signal given?"*
-  - *"What's the Sharpe ratio?"*
-  - *"What was the best trade?"*
-  - *"Explain the sentiment score"*
-  - *"What are the risks?"*
-
----
-
-## ⚙️ Key Config Options (`Config` in `ai_hedge_fund.py`)
-
-| Parameter | Default | Description |
-|---|---|---|
-| `ticker` | `RELIANCE.NS` | NSE ticker symbol |
-| `start_date` | `2020-01-01` | Training data start |
-| `seq_len` | `90` | LSTM lookback window (days) |
-| `use_finbert` | `True` | Use FinBERT (disable to use VADER, much faster) |
-| `epochs` | `100` | Max training epochs (early stopping at 15 patience) |
-| `price_weight` | `0.50` | LSTM signal weight in fusion |
-| `sentiment_weight` | `0.30` | Sentiment signal weight |
-| `momentum_weight` | `0.20` | RSI+MACD signal weight |
-| `stop_loss_pct` | `0.07` | Exit if down 7% from entry |
-| `trailing_stop_pct` | `0.05` | Exit if down 5% from peak |
-| `take_profit_pct` | `0.15` | Exit if up 15% from entry |
-| `min_return_threshold` | `0.007` | Min 0.7% predicted return to call BUY |
-| `force_retrain` | `False` | Set True to ignore cached model |
-
----
-
-## 🗂️ Cache Behaviour
-
-The `cache/` folder is auto-managed:
-
-- `data_<TICKER>.csv` — full OHLCV + all 15 indicators, exported every run (ready to open in Excel)
-- `model_<TICKER>.pt` — saved LSTM weights, reloaded automatically on next run
-- `sentiment_<TICKER>.csv` — incremental sentiment cache, max 2000 rows per ticker
-- `loss_<TICKER>.png` — training loss curve image
-- `backtest_<TICKER>.png` — backtest equity curve image
-
-To force a full fresh run: delete the cache folder or set `force_retrain=True`.
-
----
-
-## 📦 Dependencies
-
-| Package | Purpose |
-|---|---|
-| `torch` | LSTM training |
-| `transformers` | FinBERT (HuggingFace) |
-| `yfinance` | Stock price data + news |
-| `duckduckgo-search` | Free news search |
-| `vaderSentiment` | Lightweight sentiment fallback |
-| `scikit-learn` | MinMaxScaler |
-| `flask` + `flask-cors` | REST API server |
-| `pandas` / `numpy` / `matplotlib` | Data processing and plotting |
-
----
-
-## 💬 ARIA Chatbot — Advanced Mode (Ollama)
-
-For open-ended questions beyond the rule-based engine, install [Ollama](https://ollama.com) and pull LLaMA 3:
+### 5. Portfolio backtest
 
 ```bash
-ollama pull llama3
-ollama serve
+python portfolio_manager.py
 ```
 
-With Ollama running, ARIA can answer arbitrary finance questions grounded in the current analysis context.
+## Important Configuration
+
+The main settings live in `Config` inside [ai_hedge_fund.py](C:\Users\vinit\OneDrive\Desktop\major\ai_hedge_fund.py).
+
+Key parameters:
+
+- `seq_len = 90`
+- `epochs = 100`
+- `hidden_size = 128`
+- `num_layers = 3`
+- `price_weight = 0.70`
+- `sentiment_weight = 0.10`
+- `momentum_weight = 0.20`
+- `strong_threshold = 0.68`
+- `signal_threshold = 0.56`
+- `stop_loss_pct = 0.07`
+- `trailing_stop_pct = 0.05`
+- `take_profit_pct = 0.15`
+- `benchmark_ticker = "^NSEI"`
+
+## Cache Behaviour
+
+The `cache/` directory stores:
+
+- `data_<TICKER>.csv`
+- `sentiment_<TICKER>.csv`
+- `model_<TICKER>.pt`
+- `loss_<TICKER>.png`
+- `backtest_<TICKER>.png`
+
+The pipeline:
+
+- reuses cached market data when valid
+- reuses model checkpoints unless retraining is required
+- incrementally updates sentiment cache
+- saves model checkpoints atomically for stability
+
+## Current Limitations
+
+These are important to state honestly in evaluation:
+
+- free historical news availability is limited
+- sentiment quality is weaker for old historical periods than for recent periods
+- buy-and-hold can still outperform in long uninterrupted rallies
+- the model is regime-sensitive
+- transaction costs, brokerage, taxes, and slippage are not fully modeled
+- this is a research prototype, not a live trading platform
+
+## Why Buy-and-Hold Can Beat the Model
+
+Buy-and-hold is not a "bad" baseline. In strongly trending markets, it can outperform active models because it never exits.
+
+An active AI system may underperform buy-and-hold when:
+
+- it exits too early
+- it stays in cash during part of a rally
+- the forecasting signal is not strong enough to time re-entry correctly
+
+So trailing buy-and-hold does not automatically mean the pipeline is broken. It usually means the market favored continuous exposure more than active timing during that period.
+
+## Recommended Viva Positioning
+
+The most defensible way to present the project is:
+
+"We built an LSTM-led AI-based quantitative portfolio management system for Indian equities that combines market data, technical indicators, and news sentiment to generate actionable trading signals and benchmark-aware backtests."
+
+Avoid saying:
+
+- "we always beat the market"
+- "the model predicts crashes perfectly"
+- "buy-and-hold is bad"
+- "this is production-ready"
+
+Instead say:
+
+- "the system is benchmark-aware and research-oriented"
+- "it aims to improve structured decision-making"
+- "performance varies by market regime"
+- "LSTM is the core forecasting engine, with sentiment and momentum as supporting decision layers"
+
+## Dependencies
+
+Main packages used:
+
+- `torch`
+- `pandas`
+- `numpy`
+- `matplotlib`
+- `scikit-learn`
+- `yfinance`
+- `transformers`
+- `duckduckgo-search`
+- `vaderSentiment`
+- `flask`
+- `flask-cors`
+- `requests`
+
+## Final Note
+
+This project is strongest when presented as an engineering system:
+
+- data ingestion
+- model pipeline
+- sentiment integration
+- signal fusion
+- realistic backtesting
+- benchmark comparison
+- frontend visualisation
+
+That full-stack integration is one of its biggest strengths.
