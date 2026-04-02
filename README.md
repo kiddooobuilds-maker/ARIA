@@ -1,4 +1,4 @@
-# AI-Powered Quant Portfolio Management System
+# ARIA — AI Research & Investment Analyst
 
 An engineering major project for Indian equity markets. This project combines an LSTM-led forecasting pipeline, technical indicators, news sentiment, backtesting, and a web dashboard for analysing NSE stocks and comparing decisions against real market benchmarks such as the Nifty 50.
 
