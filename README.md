@@ -374,16 +374,4 @@ Main packages used:
 - `flask-cors`
 - `requests`
 
-## Final Note
 
-This project is strongest when presented as an engineering system:
-
-- data ingestion
-- model pipeline
-- sentiment integration
-- signal fusion
-- realistic backtesting
-- benchmark comparison
-- frontend visualisation
-
-That full-stack integration is one of its biggest strengths.
