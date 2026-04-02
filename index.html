@@ -1,0 +1,1790 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARIA — AI Hedge Fund for Indian Markets</title>
+  <meta name="description"
+    content="AI-powered hedge fund using LSTM price prediction and FinBERT sentiment analysis for Indian equity markets." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap"
+    rel="stylesheet" />
+
+  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.22.5/babel.min.js"></script>
+  <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
+
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #080c10;
+      --surface: #0d1117;
+      --surface2: #161b22;
+      --surface3: #1c2330;
+      --border: #21262d;
+      --border2: #30363d;
+      --green: #00ff88;
+      --green-dim: #1a4d35;
+      --red: #ff4343;
+      --red-dim: #4d1a1a;
+      --amber: #ffcc00;
+      --amber-dim: #4d3d00;
+      --blue: #58a6ff;
+      --purple: #bc8cff;
+      --cyan: #39d2c0;
+      --muted: #8b949e;
+      --text: #e6edf3;
+      --text-dim: #c9d1d9;
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'Syne', sans-serif;
+      --radius: 6px;
+    }
+
+    html,
+    body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+    }
+
+    #root {
+      height: 100%;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--surface);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border2);
+      border-radius: 3px;
+    }
+
+    /* Layout */
+    .shell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Topbar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 24px;
+      height: 56px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .topbar-logo {
+      font-family: var(--sans);
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--green);
+      white-space: nowrap;
+    }
+
+    .topbar-logo span {
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 13px;
+      margin-left: 8px;
+    }
+
+    .ticker-input {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      width: 160px;
+      text-transform: uppercase;
+      outline: none;
+      transition: border-color .15s;
+    }
+
+    .ticker-input:focus {
+      border-color: var(--green);
+    }
+
+    .run-btn {
+      background: var(--green);
+      color: #000;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 7px 18px;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      letter-spacing: .5px;
+      transition: all .2s;
+      white-space: nowrap;
+    }
+
+    .run-btn:hover {
+      opacity: .85;
+      transform: translateY(-1px);
+    }
+
+    .run-btn:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status-pill {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: var(--surface3);
+      color: var(--muted);
+      border: 1px solid var(--border2);
+    }
+
+    .status-pill.running {
+      color: var(--amber);
+      border-color: var(--amber);
+      animation: pulse 1.5s infinite;
+    }
+
+    .status-pill.done {
+      color: var(--green);
+      border-color: var(--green);
+    }
+
+    .status-pill.error {
+      color: var(--red);
+      border-color: var(--red);
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .5
+      }
+    }
+
+    .topbar-spacer {
+      flex: 1;
+    }
+
+    .ollama-badge {
+      font-size: 10px;
+      color: var(--muted);
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+    }
+
+    /* Main area */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Left sidebar — nav */
+    .sidenav {
+      width: 52px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px 0;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .nav-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 16px;
+      transition: all .15s;
+      position: relative;
+    }
+
+    .nav-btn:hover,
+    .nav-btn.active {
+      background: var(--surface2);
+      color: var(--text);
+    }
+
+    .nav-btn.active {
+      color: var(--green);
+    }
+
+    .nav-btn.active::before {
+      content: '';
+      position: absolute;
+      left: -6px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 18px;
+      background: var(--green);
+      border-radius: 0 3px 3px 0;
+    }
+
+    .nav-separator {
+      width: 28px;
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
+    }
+
+    /* Content panels */
+    .panel {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: none;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+      transition: border-color .2s;
+    }
+
+    .card:hover {
+      border-color: var(--border2);
+    }
+
+    .card-title {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      font-family: var(--mono);
+    }
+
+    /* Signal hero */
+    .signal-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+
+    .signal-card {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      padding: 20px;
+      transition: all .25s;
+    }
+
+    .signal-card:hover {
+      border-color: var(--green);
+      box-shadow: 0 0 20px rgba(0, 255, 136, .05);
+    }
+
+    .signal-ticker {
+      font-family: var(--sans);
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .signal-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .badge-STRONG_BUY {
+      background: rgba(0, 255, 136, .15);
+      color: #00ff88;
+      border: 1px solid rgba(0, 255, 136, .3);
+    }
+
+    .badge-BUY {
+      background: rgba(255, 204, 0, .12);
+      color: #ffcc00;
+      border: 1px solid rgba(255, 204, 0, .3);
+    }
+
+    .badge-HOLD {
+      background: rgba(139, 148, 158, .1);
+      color: #8b949e;
+      border: 1px solid rgba(139, 148, 158, .3);
+    }
+
+    .badge-SELL {
+      background: rgba(255, 68, 68, .12);
+      color: #ff6b6b;
+      border: 1px solid rgba(255, 68, 68, .3);
+    }
+
+    .badge-STRONG_SELL {
+      background: rgba(204, 0, 0, .15);
+      color: #ff4444;
+      border: 1px solid rgba(204, 0, 0, .3);
+    }
+
+    .score-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+
+    .score-label {
+      color: var(--muted);
+      min-width: 80px;
+    }
+
+    .score-bar-wrap {
+      flex: 1;
+      height: 3px;
+      background: var(--surface3);
+      border-radius: 2px;
+      margin: 0 10px;
+    }
+
+    .score-bar {
+      height: 100%;
+      border-radius: 2px;
+      transition: width .5s ease;
+    }
+
+    .score-val {
+      color: var(--text);
+      font-weight: 500;
+      min-width: 32px;
+      text-align: right;
+    }
+
+    .composite-score {
+      font-size: 32px;
+      font-family: var(--sans);
+      font-weight: 800;
+      color: var(--green);
+      margin-top: 12px;
+    }
+
+    /* Signal source tags */
+    .signal-source {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      margin-right: 4px;
+      margin-top: 4px;
+    }
+
+    .source-lstm {
+      background: rgba(88, 166, 255, .12);
+      color: var(--blue);
+      border: 1px solid rgba(88, 166, 255, .2);
+    }
+
+    .source-sentiment {
+      background: rgba(188, 140, 255, .12);
+      color: var(--purple);
+      border: 1px solid rgba(188, 140, 255, .2);
+    }
+
+    .source-momentum {
+      background: rgba(57, 210, 192, .12);
+      color: var(--cyan);
+      border: 1px solid rgba(57, 210, 192, .2);
+    }
+
+    /* Metrics strip */
+    .metrics-strip {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .metric-tile {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      text-align: center;
+      transition: all .2s;
+    }
+
+    .metric-tile:hover {
+      border-color: var(--border2);
+      transform: translateY(-2px);
+    }
+
+    .metric-val {
+      font-size: 22px;
+      font-family: var(--sans);
+      font-weight: 700;
+    }
+
+    .metric-val.pos {
+      color: var(--green);
+    }
+
+    .metric-val.neg {
+      color: var(--red);
+    }
+
+    .metric-val.neu {
+      color: var(--blue);
+    }
+
+    .metric-label {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Charts */
+    .chart-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+    }
+
+    .tab-btn {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 5px 14px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all .15s;
+    }
+
+    .tab-btn.active {
+      background: var(--surface2);
+      color: var(--text);
+      border-color: var(--green);
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+    }
+
+    .chart-wrap {
+      width: 100%;
+      height: 320px;
+    }
+
+    .chart-wrap-tall {
+      width: 100%;
+      height: 280px;
+      margin-bottom: 16px;
+    }
+
+    /* Trade log */
+    .trade-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .trade-table th {
+      text-align: left;
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      color: var(--muted);
+      text-transform: uppercase;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .trade-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+
+    .trade-table tr:hover td {
+      background: var(--surface2);
+    }
+
+    .tag-buy {
+      color: var(--green);
+      font-weight: 500;
+    }
+
+    .tag-sell {
+      color: var(--red);
+      font-weight: 500;
+    }
+
+    .pnl-pos {
+      color: var(--green);
+    }
+
+    .pnl-neg {
+      color: var(--red);
+    }
+
+    /* Chat panel */
+    .chat-shell {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 56px);
+      padding: 0;
+    }
+
+    .chat-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--sans);
+      font-size: 15px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .chat-header span {
+      color: var(--muted);
+      font-size: 12px;
+      font-family: var(--mono);
+      font-weight: 400;
+      margin-left: 8px;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .msg {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .msg.user {
+      flex-direction: row-reverse;
+    }
+
+    .msg-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+    }
+
+    .msg-avatar.aria {
+      background: var(--green-dim);
+      color: var(--green);
+    }
+
+    .msg-avatar.user {
+      background: var(--surface3);
+      color: var(--muted);
+    }
+
+    .msg-bubble {
+      max-width: 75%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .msg.aria .msg-bubble {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      border-radius: 2px 8px 8px 8px;
+    }
+
+    .msg.user .msg-bubble {
+      background: var(--surface3);
+      color: var(--text);
+      border-radius: 8px 2px 8px 8px;
+    }
+
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      padding: 12px;
+    }
+
+    .typing-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      animation: bounce .8s infinite;
+    }
+
+    .typing-dot:nth-child(2) {
+      animation-delay: .15s;
+    }
+
+    .typing-dot:nth-child(3) {
+      animation-delay: .3s;
+    }
+
+    @keyframes bounce {
+
+      0%,
+      60%,
+      100% {
+        transform: translateY(0)
+      }
+
+      30% {
+        transform: translateY(-6px)
+      }
+    }
+
+    .chat-input-area {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .chat-input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      outline: none;
+      resize: none;
+      transition: border-color .15s;
+      max-height: 120px;
+    }
+
+    .chat-input:focus {
+      border-color: var(--green);
+    }
+
+    .send-btn {
+      background: var(--green);
+      color: #000;
+      border: none;
+      border-radius: var(--radius);
+      width: 40px;
+      cursor: pointer;
+      font-size: 16px;
+      flex-shrink: 0;
+      transition: opacity .15s;
+    }
+
+    .send-btn:hover {
+      opacity: .85;
+    }
+
+    .send-btn:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+    }
+
+    .chat-suggestions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      padding: 0 24px 12px;
+    }
+
+    .suggestion-chip {
+      font-size: 11px;
+      padding: 4px 10px;
+      border: 1px solid var(--border2);
+      border-radius: 20px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all .15s;
+      font-family: var(--mono);
+    }
+
+    .suggestion-chip:hover {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    /* Log terminal */
+    .log-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 11px;
+      color: var(--muted);
+      height: 140px;
+      overflow-y: auto;
+      font-family: var(--mono);
+    }
+
+    .log-line {
+      margin-bottom: 3px;
+    }
+
+    .log-line.info {
+      color: var(--muted);
+    }
+
+    .log-line.ok {
+      color: var(--green);
+    }
+
+    .log-line.error {
+      color: var(--red);
+    }
+
+    /* Placeholder */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 60vh;
+      gap: 12px;
+      color: var(--muted);
+    }
+
+    .empty-icon {
+      font-size: 48px;
+      opacity: .3;
+    }
+
+    .empty-title {
+      font-family: var(--sans);
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-dim);
+    }
+
+    .empty-sub {
+      font-size: 12px;
+      text-align: center;
+      max-width: 320px;
+      line-height: 1.6;
+    }
+
+    /* Analytics section title */
+    .analytics-section-title {
+      font-family: var(--sans);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    /* Signal distribution mini chart */
+    .dist-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 11px;
+    }
+
+    .dist-label {
+      min-width: 90px;
+      color: var(--muted);
+    }
+
+    .dist-fill {
+      height: 8px;
+      border-radius: 4px;
+      transition: width .5s ease;
+    }
+
+    .dist-count {
+      color: var(--text-dim);
+      min-width: 24px;
+      text-align: right;
+    }
+
+    /* Responsive tweak */
+    @media (max-width: 768px) {
+      .metrics-strip {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .signal-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .analytics-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+    const {
+      ResponsiveContainer, LineChart, Line, AreaChart, Area,
+      BarChart, Bar, ComposedChart, ReferenceLine,
+      XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell, PieChart, Pie,
+    } = Recharts;
+
+    const API = "";
+
+    // ── Nav icons ────────────────────────────────────────────────────────────
+    const ICONS = {
+      dashboard: "⬡",
+      screener: "◫",
+      charts: "◈",
+      trades: "≡",
+      analytics: "◇",
+      chat: "◉",
+    };
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    const fmt = (n, dec = 2) => n != null ? Number(n).toFixed(dec) : "—";
+    const fmtRs = n => n != null ? `₹${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "—";
+    const signClass = v => Number(v) > 0 ? "pos" : Number(v) < 0 ? "neg" : "neu";
+
+    const CHART_THEME = {
+      axis: { tick: { fill: "#8b949e", fontSize: 10 }, stroke: "#30363d" },
+      tooltip: { contentStyle: { backgroundColor: "#161b22", borderColor: "#30363d", color: "#e6edf3", fontSize: 12 }, itemStyle: { color: "#e6edf3" } }
+    };
+
+    const SIGNAL_COLORS = {
+      STRONG_BUY: "#00ff88",
+      BUY: "#ffcc00",
+      HOLD: "#8b949e",
+      SELL: "#ff6b6b",
+      STRONG_SELL: "#cc0000"
+    };
+    // =============================================================================
+    // SUB-COMPONENTS
+    // =============================================================================
+
+    function StatusPill({ status, message }) {
+      const labels = { idle: "IDLE", running: "RUNNING", done: "READY", error: "ERROR" };
+      return (
+        <span className={`status-pill ${status}`}>
+          {labels[status] || status}{status === "running" && message ? " — " + message : ""}
+        </span>
+      );
+    }
+
+    function ScoreRow({ label, value, source }) {
+      const pct = Math.round(value * 100);
+      const sourceClass = source === "LSTM" ? "source-lstm" :
+        source === "News" ? "source-sentiment" : "source-momentum";
+      return (
+        <div className="score-row">
+          <span className="score-label">
+            {label}
+            <span className={`signal-source ${sourceClass}`}>{source}</span>
+          </span>
+          <div className="score-bar-wrap">
+            <div className="score-bar" style={{
+              width: `${pct}%`,
+              background: pct > 65 ? "var(--green)" : pct < 35 ? "var(--red)" : "var(--amber)"
+            }} />
+          </div>
+          <span className="score-val">{fmt(value)}</span>
+        </div>
+      );
+    }
+
+    function SignalCard({ data }) {
+      const sig = data.latest_signal;
+      if (!sig) return null;
+      return (
+        <div className="signal-card">
+          <div className="signal-ticker">{data.ticker}</div>
+          <div className={`signal-badge badge-${sig.signal}`}>
+            {sig.signal?.replace("_", " ")}
+          </div>
+          <ScoreRow label="Price" value={sig.price_score ?? 0.5} source="LSTM" />
+          <ScoreRow label="Sentiment" value={sig.sent_score ?? 0.5} source="News" />
+          <ScoreRow label="Momentum" value={sig.mom_score ?? 0.5} source="RSI+MACD" />
+          <div className="composite-score">{fmt(sig.composite)}</div>
+          <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>
+            Composite confidence · {sig.date}
+          </div>
+        </div>
+      );
+    }
+
+    function MetricsStrip({ metrics }) {
+      if (!metrics) return null;
+      const tiles = [
+        { label: "Alpha (vs Nifty)", val: `${metrics.alpha_pct > 0 ? "+" : ""}${fmt(metrics.alpha_pct)}%`, cls: metrics.alpha_pct > 0 ? "pos" : "neg" },
+        { label: "Total Return", val: `${metrics.total_return_pct > 0 ? "+" : ""}${fmt(metrics.total_return_pct)}%`, cls: signClass(metrics.total_return_pct) },
+        { label: "Nifty 50 Index", val: `${metrics.benchmark_return_pct > 0 ? "+" : ""}${fmt(metrics.benchmark_return_pct)}%`, cls: "neu" },
+        { label: "Sharpe Ratio", val: fmt(metrics.sharpe), cls: signClass(metrics.sharpe) },
+        { label: "Max Drawdown", val: `${fmt(metrics.max_drawdown_pct)}%`, cls: "neg" },
+        { label: "Win Rate", val: `${fmt(metrics.win_rate_pct, 1)}%`, cls: "neu" },
+      ];
+      return (
+        <div className="metrics-strip">
+          {tiles.map(t => (
+            <div key={t.label} className="metric-tile">
+              <div className={`metric-val ${t.cls}`}>{t.val}</div>
+              <div className="metric-label">{t.label}</div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // ── Dashboard Charts ─────────────────────────────────────────────────────
+
+    function PriceChart({ data }) {
+      const cd = data?.chart_data;
+      if (!cd) return <div className="empty-state"><span className="empty-icon">📈</span><span className="empty-sub">Run analysis to see price predictions</span></div>;
+
+      const points = cd.dates.map((d, i) => ({
+        date: d, 
+        actual: cd.actual_close[i], 
+        predicted: cd.pred_return ? (cd.actual_close[i-1] * (1 + cd.pred_return[i])) : cd.pred_close[i],
+      }));
+      const n = points.length;
+      const step = Math.max(1, Math.floor(n / 8));
+
+      return (
+        <div className="chart-wrap">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+              <CartesianGrid stroke="#21262d" strokeDasharray="3 3" />
+              <XAxis dataKey="date" interval={step} {...CHART_THEME.axis} />
+              <YAxis {...CHART_THEME.axis}
+                tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
+              <Tooltip {...CHART_THEME.tooltip} formatter={(v, n) => [`₹${v.toFixed(2)}`, n]} />
+              <Legend wrapperStyle={{ fontSize: 11, color: "#8b949e" }} />
+              <Line type="monotone" dataKey="actual" stroke="#e6edf3" strokeWidth={1.5} dot={false} name="Actual Close" />
+              <Line type="monotone" dataKey="predicted" stroke="#00ff88" strokeWidth={1.5} dot={false} strokeDasharray="4 2" name="LSTM Predicted" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    function SentimentChart({ data }) {
+      const cd = data?.chart_data;
+      if (!cd) return <div className="empty-state"><span className="empty-icon">🧠</span><span className="empty-sub">Run analysis to see sentiment data</span></div>;
+
+      const points = cd.dates.map((d, i) => ({
+        date: d,
+        score: ((cd.sentiment[i] - 0.5) * 2).toFixed(3),
+        composite: cd.composite[i],
+      }));
+      const n = points.length;
+      const step = Math.max(1, Math.floor(n / 8));
+
+      return (
+        <div className="chart-wrap">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+              <CartesianGrid stroke="#21262d" strokeDasharray="3 3" />
+              <XAxis dataKey="date" interval={step} {...CHART_THEME.axis} />
+              <YAxis domain={[-1, 1]} {...CHART_THEME.axis} />
+              <Tooltip {...CHART_THEME.tooltip} />
+              <Legend wrapperStyle={{ fontSize: 11, color: "#8b949e" }} />
+              <ReferenceLine y={0} stroke="#30363d" strokeDasharray="3 3" />
+              <Bar dataKey="score" name="Sentiment Score" fill="#00ff88" radius={[2, 2, 0, 0]} />
+              <Line type="monotone" dataKey="composite" name="Composite"
+                stroke="#ffcc00" strokeWidth={1.5} dot={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    function EquityChart({ data }) {
+      const cd = data?.chart_data;
+      if (!cd) return <div className="empty-state"><span className="empty-icon">💹</span><span className="empty-sub">Run analysis to see equity curve</span></div>;
+
+      const n = cd.equity_curve.length;
+      const bh0 = cd.buy_hold[0] || 1;
+      const initCap = data?.metrics?.final_capital
+        ? data.metrics.final_capital / (cd.equity_curve[n - 1] / cd.equity_curve[0])
+        : 100000;
+
+      const bench0 = cd.benchmark?.[0] || 1;
+      const points = cd.dates.slice(0, n).map((d, i) => ({
+        date: d,
+        portfolio: Math.round(cd.equity_curve[i]),
+        buyhold: Math.round((cd.buy_hold[i] / bh0) * initCap),
+        nifty: cd.benchmark ? Math.round((cd.benchmark[i] / bench0) * initCap) : null,
+      }));
+      const step = Math.max(1, Math.floor(n / 8));
+
+      return (
+        <div className="chart-wrap">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+              <defs>
+                <linearGradient id="gpf" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#00ff88" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#00ff88" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gbh" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ffa500" stopOpacity={0.1} />
+                  <stop offset="95%" stopColor="#ffa500" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#21262d" strokeDasharray="3 3" />
+              <XAxis dataKey="date" interval={step} {...CHART_THEME.axis} />
+              <YAxis {...CHART_THEME.axis}
+                tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
+              <Tooltip {...CHART_THEME.tooltip}
+                formatter={(v, n) => [`₹${v.toLocaleString("en-IN")}`, n]} />
+              <Legend wrapperStyle={{ fontSize: 11, color: "#8b949e" }} />
+              <Area type="monotone" dataKey="portfolio" stroke="#00ff88" strokeWidth={2}
+                fill="url(#gpf)" name="AI Portfolio" dot={false} />
+              <Area type="monotone" dataKey="buyhold" stroke="#ffa500" strokeWidth={1.5}
+                fill="url(#gbh)" name="Asset Buy & Hold" strokeDasharray="4 2" dot={false} />
+              {cd.benchmark && (
+                <Area type="monotone" dataKey="nifty" stroke="#58a6ff" strokeWidth={1.5}
+                  fill="none" name="Nifty 50 Index" strokeDasharray="2 2" dot={false} />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    // ── Analytics Charts (extra deep-dive page) ──────────────────────────────
+
+    function RSIChart({ data }) {
+      const cd = data?.chart_data;
+      const an = data?.analytics;
+      if (!cd || !an?.rsi) return null;
+
+      const points = cd.dates.map((d, i) => ({
+        date: d, rsi: an.rsi[i],
+      }));
+      const step = Math.max(1, Math.floor(points.length / 8));
+
+      return (
+        <div className="chart-wrap-tall">
+          <div className="card-title">RSI (14-period)</div>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+              <defs>
+                <linearGradient id="rsiG" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#bc8cff" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#bc8cff" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#21262d" strokeDasharray="3 3" />
+              <XAxis dataKey="date" interval={step} {...CHART_THEME.axis} />
+              <YAxis domain={[0, 100]} {...CHART_THEME.axis} />
+              <Tooltip {...CHART_THEME.tooltip} />
+              <ReferenceLine y={70} stroke="#ff4444" strokeDasharray="4 4" label={{ value: "Overbought", fill: "#ff4444", fontSize: 9 }} />
+              <ReferenceLine y={30} stroke="#00ff88" strokeDasharray="4 4" label={{ value: "Oversold", fill: "#00ff88", fontSize: 9 }} />
+              <Area type="monotone" dataKey="rsi" stroke="#bc8cff" strokeWidth={1.5}
+                fill="url(#rsiG)" name="RSI" dot={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    function MACDChart({ data }) {
+      const cd = data?.chart_data;
+      const an = data?.analytics;
+      if (!cd || !an?.macd) return null;
+
+      const points = cd.dates.map((d, i) => ({
+        date: d, macd: an.macd[i], signal: an.macd_signal[i], hist: an.macd_hist[i],
+      }));
+      const step = Math.max(1, Math.floor(points.length / 8));
+
+      return (
+        <div className="chart-wrap-tall">
+          <div className="card-title">MACD (12, 26, 9)</div>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+              <CartesianGrid stroke="#21262d" strokeDasharray="3 3" />
+              <XAxis dataKey="date" interval={step} {...CHART_THEME.axis} />
+              <YAxis {...CHART_THEME.axis} />
+              <Tooltip {...CHART_THEME.tooltip} />
+              <Legend wrapperStyle={{ fontSize: 11, color: "#8b949e" }} />
+              <ReferenceLine y={0} stroke="#30363d" />
+              <Bar dataKey="hist" name="Histogram" radius={[1, 1, 0, 0]}>
+                {points.map((p, i) => (
+                  <Cell key={i} fill={p.hist >= 0 ? "rgba(0,255,136,0.4)" : "rgba(255,68,68,0.4)"} />
+                ))}
+              </Bar>
+              <Line type="monotone" dataKey="macd" stroke="#58a6ff" strokeWidth={1.5} dot={false} name="MACD" />
+              <Line type="monotone" dataKey="signal" stroke="#ff6b35" strokeWidth={1.5} dot={false} name="Signal" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    function LossChart({ data }) {
+      const an = data?.analytics;
+      if (!an?.train_losses) return null;
+
+      const points = an.train_losses.map((t, i) => ({
+        epoch: i + 1, train: t, val: an.val_losses[i],
+      }));
+
+      return (
+        <div className="chart-wrap-tall">
+          <div className="card-title">Training Loss Curve</div>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+              <CartesianGrid stroke="#21262d" strokeDasharray="3 3" />
+              <XAxis dataKey="epoch" {...CHART_THEME.axis} />
+              <YAxis {...CHART_THEME.axis} />
+              <Tooltip {...CHART_THEME.tooltip} />
+              <Legend wrapperStyle={{ fontSize: 11, color: "#8b949e" }} />
+              <Line type="monotone" dataKey="train" stroke="#00ff88" strokeWidth={1.5} dot={false} name="Train Loss" />
+              <Line type="monotone" dataKey="val" stroke="#ff6b35" strokeWidth={1.5} dot={false} name="Val Loss" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    function SignalDistribution({ data }) {
+      const an = data?.analytics;
+      if (!an?.signal_distribution) return null;
+
+      const dist = an.signal_distribution;
+      const total = Object.values(dist).reduce((a, b) => a + b, 0) || 1;
+      const order = ["STRONG_BUY", "BUY", "HOLD", "SELL", "STRONG_SELL"];
+
+      return (
+        <div>
+          <div className="card-title">Signal Distribution</div>
+          {order.map(sig => {
+            const count = dist[sig] || 0;
+            const pct = (count / total * 100);
+            return (
+              <div key={sig} className="dist-bar">
+                <span className="dist-label">{sig.replace("_", " ")}</span>
+                <div style={{ flex: 1, height: 8, background: "var(--surface3)", borderRadius: 4 }}>
+                  <div className="dist-fill" style={{
+                    width: `${pct}%`,
+                    background: SIGNAL_COLORS[sig],
+                  }} />
+                </div>
+                <span className="dist-count">{count}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // ── Trade Log ────────────────────────────────────────────────────────────
+
+    function TradeLog({ trades }) {
+      if (!trades?.length) return (
+        <div className="empty-state">
+          <span className="empty-icon">📋</span>
+          <span className="empty-sub">No trades yet. Run analysis first.</span>
+        </div>
+      );
+      return (
+        <div style={{ overflowX: "auto" }}>
+          <table className="trade-table">
+            <thead>
+              <tr>
+                <th>Date</th><th>Action</th><th>Price</th>
+                <th>Signal</th><th>Shares</th><th>P&amp;L</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...trades].reverse().map((t, i) => (
+                <tr key={i}>
+                  <td>{t.date}</td>
+                  <td className={t.action?.includes("BUY") ? "tag-buy" : "tag-sell"}>
+                    {t.action}
+                  </td>
+                  <td>₹{Number(t.price || 0).toFixed(2)}</td>
+                  <td style={{ color: "var(--muted)" }}>{t.signal}</td>
+                  <td>{Number(t.shares || 0).toFixed(2)}</td>
+                  <td className={t.pnl != null ? (t.pnl >= 0 ? "pnl-pos" : "pnl-neg") : ""}>
+                    {t.pnl != null ? `${t.pnl >= 0 ? "+" : ""}₹${Number(t.pnl).toFixed(2)}` : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    // ── Chat Panel ───────────────────────────────────────────────────────────
+
+    const SUGGESTIONS = [
+      "Why was this call given?",
+      "Explain the sentiment score",
+      "What was our best trade?",
+      "Is the Sharpe ratio good?",
+      "What are the biggest risks?",
+      "How accurate is the LSTM model?",
+    ];
+
+    function ChatPanel({ analysisContext }) {
+      const [messages, setMessages] = useState([{
+        role: "aria",
+        content: "Hi, I'm ARIA — your AI Research & Investment Analyst.\n\nRun an analysis first, then ask me anything about the signals, trades, sentiment, or model performance."
+      }]);
+      const [input, setInput] = useState("");
+      const [typing, setTyping] = useState(false);
+      const bottomRef = useRef(null);
+      const inputRef = useRef(null);
+
+      useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, [messages, typing]);
+
+      const send = useCallback(async (text) => {
+        const msg = text || input.trim();
+        if (!msg) return;
+        setInput("");
+
+        const userMsg = { role: "user", content: msg };
+        setMessages(prev => [...prev, userMsg]);
+        setTyping(true);
+
+        try {
+          const history = messages.slice(-10).map(m => ({
+            role: m.role === "aria" ? "assistant" : "user",
+            content: m.content,
+          }));
+
+          const res = await fetch(`${API}/api/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: msg,
+              history,
+              context: analysisContext,
+            }),
+          });
+          const data = await res.json();
+          setMessages(prev => [...prev, { role: "aria", content: data.reply || "No response." }]);
+        } catch (e) {
+          setMessages(prev => [...prev, {
+            role: "aria",
+            content: "Could not reach the API. Make sure app.py is running on port 5000."
+          }]);
+        } finally {
+          setTyping(false);
+        }
+      }, [input, messages, analysisContext]);
+
+      const onKey = e => {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+      };
+
+      return (
+        <div className="chat-shell">
+          <div className="chat-header">
+            ARIA <span>AI Research & Investment Analyst</span>
+          </div>
+
+          <div className="chat-messages">
+            {messages.map((m, i) => (
+              <div key={i} className={`msg ${m.role}`}>
+                <div className={`msg-avatar ${m.role}`}>
+                  {m.role === "aria" ? "A" : "U"}
+                </div>
+                <div className="msg-bubble">{m.content}</div>
+              </div>
+            ))}
+            {typing && (
+              <div className="msg aria">
+                <div className="msg-avatar aria">A</div>
+                <div className="msg-bubble">
+                  <div className="typing-indicator">
+                    <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          <div className="chat-suggestions">
+            {SUGGESTIONS.map(s => (
+              <button key={s} className="suggestion-chip" onClick={() => send(s)}>{s}</button>
+            ))}
+          </div>
+
+          <div className="chat-input-area">
+            <textarea
+              ref={inputRef}
+              className="chat-input"
+              rows={1}
+              placeholder="Ask ARIA anything about the analysis..."
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={onKey}
+            />
+            <button className="send-btn" onClick={() => send()} disabled={!input.trim() || typing}>
+              ▶
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    function ScreenerPanel({ stats, isScanning, onRun, onClickTicker }) {
+      const PORTFOLIO = ["RELIANCE.NS", "HDFCBANK.NS", "TCS.NS", "ICICIBANK.NS", "INFY.NS", "SBIN.NS", "BHARTIARTL.NS", "ITC.NS", "LT.NS", "BAJFINANCE.NS"];
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div>
+              <div className="card-title" style={{ marginBottom: 4, fontSize: 14 }}>Market Screener</div>
+              <div style={{ fontSize: 11, color: "var(--muted)" }}>Top 10 Indian Blue-Chips</div>
+            </div>
+            <button className="run-btn" onClick={onRun} disabled={isScanning}>
+              {isScanning ? "SCANNING..." : "SCAN PORTFOLIO"}
+            </button>
+          </div>
+          <div className="signal-grid">
+            {PORTFOLIO.map(t => {
+              const s = stats[t] || { status: "idle" };
+              const res = s.result;
+              const sig = res?.latest_signal;
+              return (
+                <div key={t} className="card" style={{ cursor: res ? "pointer" : "default", transition: "all .2s", border: res ? "1px solid var(--border2)" : "1px dashed var(--border)", marginBottom: 0 }}
+                  onClick={() => res ? onClickTicker(res, t) : null}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                    <div className="signal-ticker" style={{ fontSize: 16, margin: 0 }}>{t}</div>
+                    {sig && <div className={`signal-badge badge-${sig.signal}`} style={{ marginBottom: 0, padding: "2px 8px", fontSize: 9 }}>{sig.signal}</div>}
+                  </div>
+                  {!res ? (
+                    <div style={{ fontSize: 11, color: s.status === "running" ? "var(--amber)" : "var(--muted)" }}>
+                      {s.status === "running" ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div className="typing-dot" style={{ background: "var(--amber)", width: 4, height: 4 }} /><div className="typing-dot" style={{ background: "var(--amber)", width: 4, height: 4 }} /><div className="typing-dot" style={{ background: "var(--amber)", width: 4, height: 4 }} />
+                        </div>
+                      ) : s.status === "error" ? "Error scanning." : "Ready to scan."}
+                      <div style={{ marginTop: 4, height: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.msg || ""}</div>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+                        <span style={{ color: "var(--muted)" }}>Composite</span>
+                        <span style={{ color: "var(--green)", fontWeight: 600 }}>{fmt(sig.composite)}</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--text-dim)" }}>
+                        LSTM: {fmt(sig.price_score)} • News: {fmt(sig.sent_score)}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // =============================================================================
+    // MAIN APP
+    // =============================================================================
+
+    function App() {
+      const [ticker, setTicker] = useState("RELIANCE.NS");
+      const [status, setStatus] = useState("idle");
+      const [statusMsg, setStatusMsg] = useState("");
+      const [result, setResult] = useState(null);
+      const [activeTab, setActiveTab] = useState("dashboard");
+      const [chartTab, setChartTab] = useState("price");
+      const [logs, setLogs] = useState([]);
+      const [screenerStats, setScreenerStats] = useState({});
+      const [isScanning, setIsScanning] = useState(false);
+
+
+
+
+      const runScreener = async () => {
+        setIsScanning(true);
+        const PORTFOLIO = ["RELIANCE.NS", "HDFCBANK.NS", "TCS.NS", "ICICIBANK.NS", "INFY.NS", "SBIN.NS", "BHARTIARTL.NS", "ITC.NS", "LT.NS", "BAJFINANCE.NS"];
+        for (const tick of PORTFOLIO) {
+          setScreenerStats(prev => ({ ...prev, [tick]: { status: "running", msg: "Starting..." } }));
+          try {
+            const res = await fetch(`${API}/api/analyse`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticker: tick }) });
+            const { job_id } = await res.json();
+            await new Promise((resolve) => {
+              const evtSrc = new EventSource(`${API}/api/status/${job_id}`);
+              evtSrc.onmessage = async e => {
+                const ev = JSON.parse(e.data);
+                if (ev.type === "progress") {
+                  setScreenerStats(prev => ({ ...prev, [tick]: { status: "running", msg: ev.message } }));
+                } else if (ev.type === "done") {
+                  const r = await fetch(`${API}/api/result/${ev.job_id}`);
+                  const data = await r.json();
+                  setScreenerStats(prev => ({ ...prev, [tick]: { status: "done", result: data, msg: "Complete" } }));
+                  evtSrc.close(); resolve();
+                } else if (ev.type === "error") {
+                  setScreenerStats(prev => ({ ...prev, [tick]: { status: "error", msg: ev.message } }));
+                  evtSrc.close(); resolve();
+                }
+              };
+              evtSrc.onerror = () => { evtSrc.close(); resolve(); };
+            });
+          } catch (err) {
+            setScreenerStats(prev => ({ ...prev, [tick]: { status: "error", msg: err.message } }));
+          }
+        }
+        setIsScanning(false);
+      };
+
+      const addLog = (msg, type = "info") => {
+        setLogs(prev => [...prev.slice(-60), { msg, type, ts: new Date().toLocaleTimeString() }]);
+      };
+
+      const runAnalysis = async () => {
+        if (!ticker.trim()) return;
+        setStatus("running");
+        setResult(null);
+        setLogs([]);
+        addLog(`Starting analysis for ${ticker}...`, "info");
+
+        try {
+          const res = await fetch(`${API}/api/analyse`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ticker: ticker.trim().toUpperCase() }),
+          });
+          const { job_id } = await res.json();
+          addLog(`Job started: ${job_id}`, "info");
+
+          const evtSrc = new EventSource(`${API}/api/status/${job_id}`);
+          evtSrc.onmessage = async e => {
+            const ev = JSON.parse(e.data);
+            if (ev.type === "progress") {
+              setStatusMsg(ev.message);
+              addLog(ev.message, "info");
+            } else if (ev.type === "done") {
+              const r = await fetch(`${API}/api/result/${ev.job_id}`);
+              const data = await r.json();
+              setResult(data);
+              setStatus("done");
+              setStatusMsg("");
+              addLog("✅ Analysis complete!", "ok");
+              evtSrc.close();
+            } else if (ev.type === "error") {
+              setStatus("error");
+              addLog(`Error: ${ev.message}`, "error");
+              evtSrc.close();
+            }
+          };
+          evtSrc.onerror = () => {
+            setStatus("error");
+            addLog("Connection to server lost.", "error");
+            evtSrc.close();
+          };
+        } catch (err) {
+          setStatus("error");
+          addLog(`Failed: ${err.message}`, "error");
+        }
+      };
+
+      const CHART_TABS = [
+        { id: "price", label: "Price + Predictions" },
+        { id: "sentiment", label: "Sentiment Timeline" },
+        { id: "equity", label: "Equity Curve" },
+      ];
+
+      const NAV = [
+        { id: "dashboard", icon: ICONS.dashboard, label: "Dashboard" },
+        { id: "screener", icon: ICONS.screener, label: "Screener" },
+        { id: "charts", icon: ICONS.charts, label: "Charts" },
+        { id: "trades", icon: ICONS.trades, label: "Trades" },
+        { id: "analytics", icon: ICONS.analytics, label: "Analytics" },
+        { id: "chat", icon: ICONS.chat, label: "Chat" },
+
+      ];
+
+      return (
+        <div className="shell">
+          {/* ── Topbar ── */}
+          <div className="topbar">
+            <div className="topbar-logo">ARIA <span>AI Hedge Fund</span></div>
+            <input
+              id="ticker-input"
+              className="ticker-input"
+              value={ticker}
+              onChange={e => setTicker(e.target.value.toUpperCase())}
+              onKeyDown={e => e.key === "Enter" && runAnalysis()}
+              placeholder="RELIANCE.NS"
+            />
+            <button id="run-btn" className="run-btn" onClick={runAnalysis}
+              disabled={status === "running"}>
+              {status === "running" ? "RUNNING..." : "RUN ANALYSIS"}
+            </button>
+            <StatusPill status={status} message={statusMsg} />
+            <div className="topbar-spacer" />
+            <div className="ollama-badge">⚙ LSTM + FinBERT</div>
+          </div>
+
+          <div className="main">
+            {/* ── Sidenav ── */}
+            <div className="sidenav">
+              {NAV.map((n, idx) => (
+                <React.Fragment key={n.id}>
+                  {idx === 4 && <div className="nav-separator" />}
+                  <button
+                    id={`nav-${n.id}`}
+                    className={`nav-btn ${activeTab === n.id ? "active" : ""}`}
+                    title={n.label}
+                    onClick={() => setActiveTab(n.id)}>
+                    {n.icon}
+                  </button>
+                </React.Fragment>
+              ))}
+            </div>
+
+            {/* ── Screener Panel ── */}
+            <div className={`panel ${activeTab === "screener" ? "active" : ""}`} id="panel-screener">
+              <ScreenerPanel
+                stats={screenerStats}
+                isScanning={isScanning}
+                onRun={runScreener}
+                onClickTicker={(data, t) => { setResult(data); setTicker(t); setActiveTab("dashboard"); }}
+              />
+            </div>
+
+            {/* ── Dashboard Panel ── */}
+            <div className={`panel ${activeTab === "dashboard" ? "active" : ""}`} id="panel-dashboard">
+              {!result ? (
+                <div className="empty-state">
+                  <div className="empty-icon">⬡</div>
+                  <div className="empty-title">No Analysis Yet</div>
+                  <div className="empty-sub">
+                    Enter a NSE ticker (e.g. RELIANCE.NS, INFY.NS, TCS.NS) and
+                    click Run Analysis to start the pipeline.
+                  </div>
+                  {logs.length > 0 && (
+                    <div className="log-box" style={{ marginTop: 24, width: "100%", maxWidth: 600 }}>
+                      {logs.map((l, i) => (
+                        <div key={i} className={`log-line ${l.type}`}>
+                          <span style={{ color: "var(--border2)" }}>{l.ts}</span>  {l.msg}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="card">
+                    <div className="card-title">Today's Signal — Based on LSTM + News Sentiment</div>
+                    <div className="signal-grid">
+                      <SignalCard data={result} />
+                    </div>
+                  </div>
+
+                  <MetricsStrip metrics={result.metrics} />
+
+                  <div className="card">
+                    <div className="card-title">Training Info</div>
+                    <div style={{ display: "flex", gap: 32, fontSize: 12, color: "var(--muted)", flexWrap: "wrap" }}>
+                      <span>Best Epoch: <b style={{ color: "var(--text)" }}>{result.training_info?.best_epoch}</b></span>
+                      <span>Val Loss: <b style={{ color: "var(--text)" }}>{result.training_info?.best_val_loss}</b></span>
+                      <span>Parameters: <b style={{ color: "var(--text)" }}>{result.training_info?.parameters?.toLocaleString()}</b></span>
+                      <span>Input Size: <b style={{ color: "var(--text)" }}>{result.training_info?.input_size} features</b></span>
+                      <span>Final Capital: <b style={{ color: "var(--green)" }}>{fmtRs(result.metrics?.final_capital)}</b></span>
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: 11, color: "var(--muted)" }}>
+                      Features: {result.training_info?.features_used?.join(", ")}
+                    </div>
+                  </div>
+
+                  <div className="card">
+                    <div className="card-title">Pipeline Log</div>
+                    <div className="log-box">
+                      {logs.map((l, i) => (
+                        <div key={i} className={`log-line ${l.type}`}>
+                          <span style={{ color: "var(--border2)" }}>{l.ts}</span>  {l.msg}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* ── Charts Panel ── */}
+            <div className={`panel ${activeTab === "charts" ? "active" : ""}`} id="panel-charts">
+              <div className="chart-tabs">
+                {CHART_TABS.map(t => (
+                  <button key={t.id}
+                    className={`tab-btn ${chartTab === t.id ? "active" : ""}`}
+                    onClick={() => setChartTab(t.id)}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="card">
+                {chartTab === "price" && <PriceChart data={result} />}
+                {chartTab === "sentiment" && <SentimentChart data={result} />}
+                {chartTab === "equity" && <EquityChart data={result} />}
+              </div>
+
+              {result && <MetricsStrip metrics={result.metrics} />}
+            </div>
+
+            {/* ── Trades Panel ── */}
+            <div className={`panel ${activeTab === "trades" ? "active" : ""}`} id="panel-trades">
+              {result && <MetricsStrip metrics={result.metrics} />}
+              <div className="card">
+                <div className="card-title">Trade Log ({result?.trade_log?.length ?? 0} trades)</div>
+                <TradeLog trades={result?.trade_log} />
+              </div>
+            </div>
+
+            {/* ── Analytics Panel (Extra Charts) ── */}
+            <div className={`panel ${activeTab === "analytics" ? "active" : ""}`} id="panel-analytics">
+              {!result ? (
+                <div className="empty-state">
+                  <div className="empty-icon">◇</div>
+                  <div className="empty-title">Analytics</div>
+                  <div className="empty-sub">
+                    Run an analysis to unlock deep-dive analytics: RSI, MACD,
+                    training loss curves, and signal distribution.
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="analytics-section-title">📊 Technical Indicators</div>
+                  <div className="card">
+                    <RSIChart data={result} />
+                  </div>
+                  <div className="card">
+                    <MACDChart data={result} />
+                  </div>
+
+                  <div className="analytics-section-title">🤖 Model Training</div>
+                  <div className="card">
+                    <LossChart data={result} />
+                  </div>
+
+                  <div className="analytics-section-title">📈 Signal Analysis</div>
+                  <div className="analytics-grid">
+                    <div className="card">
+                      <SignalDistribution data={result} />
+                    </div>
+                    <div className="card">
+                      <div className="card-title">Model Summary</div>
+                      <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.8 }}>
+                        <div>Architecture: <span style={{ color: "var(--text)" }}>3-layer Returns-Based LSTM</span></div>
+                        <div>Parameters: <span style={{ color: "var(--text)" }}>{result.training_info?.parameters?.toLocaleString()}</span></div>
+                        <div>Best Epoch: <span style={{ color: "var(--text)" }}>{result.training_info?.best_epoch} / {result.training_info?.total_epochs}</span></div>
+                        <div>Val Loss: <span style={{ color: "var(--green)" }}>{result.training_info?.best_val_loss}</span></div>
+                        <div>Features: <span style={{ color: "var(--text)" }}>{result.training_info?.input_size}</span></div>
+                        <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>
+                          Signal weights: LSTM 50% · Sentiment 30% · Momentum 20%
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* ── Chat Panel ── */}
+            <div className={`panel ${activeTab === "chat" ? "active" : ""}`}
+              id="panel-chat"
+              style={{
+                padding: 0, display: activeTab === "chat" ? "flex" : "none",
+                flexDirection: "column", overflow: "hidden"
+              }}>
+              <ChatPanel analysisContext={result} />
+            </div>
+
+
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+
+</html>

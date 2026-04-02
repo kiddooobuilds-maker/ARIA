@@ -1,0 +1,12 @@
+torch
+yfinance
+pandas
+numpy
+scikit-learn
+matplotlib
+transformers
+duckduckgo-search
+vaderSentiment
+flask
+flask-cors
+requests
